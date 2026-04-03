@@ -22,7 +22,11 @@ from .hy3dpaint.utils.uvwrap_utils import mesh_uv_wrap
 from .hy3dpaint.convert_utils import create_glb_with_pbr_materials
 from .hy3dpaint.textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
 
-from .hy3dshape.hy3dshape.rembg import BackgroundRemover
+try:
+    from rembg import remove as rembg_remove, new_session as rembg_new_session
+    _HAS_REMBG = True
+except ImportError:
+    _HAS_REMBG = False
 
 from spandrel import ModelLoader, ImageModelDescriptor
 
@@ -907,7 +911,7 @@ class Hy3D21GenerateMultiViewsBatch:
     def process(self, output_folder, camera_config, paint_model, view_size, steps, guidance_scale, texture_size, unwrap_mesh, seed, generate_random_seed, remove_background, skip_generated_mesh, upscale_multiviews, upscale_model_name, export_multiviews, export_metadata, input_images_folder = None, input_meshes_folder = None):
         device = mm.get_torch_device()
         offload_device=mm.unet_offload_device()
-        rembg = BackgroundRemover()
+        rembg_session = None
         processed_meshes = []
 
         vertex_inpaint = True
@@ -956,8 +960,12 @@ class Hy3D21GenerateMultiViewsBatch:
                             metaData.camera_config = camera_config
                             image = Image.open(file)
                             if remove_background:
+                                if not _HAS_REMBG:
+                                    raise ImportError("rembg is required for background removal. Install with: pip install rembg")
+                                if rembg_session is None:
+                                    rembg_session = rembg_new_session()
                                 print('Removing background ...')
-                                image = rembg(image)
+                                image = rembg_remove(image, session=rembg_session, bgcolor=[255, 255, 255, 0])
 
                             if generate_random_seed:
                                 seed = int.from_bytes(os.urandom(4), 'big')
