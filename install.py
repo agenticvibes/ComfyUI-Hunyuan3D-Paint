@@ -99,14 +99,16 @@ install_extension(
     source_dir=os.path.join(script_dir, "hy3dpaint", "DifferentiableRenderer"),
 )
 
-# Install MLX on macOS Apple Silicon (optional — enables faster diffusion backend)
+# On macOS Apple Silicon, install MLX for ~3-5x faster diffusion inference.
+# The node UI will show 'mlx' as a backend option when MLX is installed.
+# Without MLX, only the 'pytorch' (MPS) backend is available on Mac.
 if platform.system() == "Darwin" and platform.machine() == "arm64":
     if not is_package_installed("mlx"):
         print("[Hunyuan3D-Paint] Installing MLX for Apple Silicon acceleration...")
         try:
             pip_install("mlx")
-            print("[Hunyuan3D-Paint] MLX installed. Select 'mlx' in diffusion_backend for ~5x faster texture generation.")
+            print("[Hunyuan3D-Paint] MLX installed. Select 'mlx' in diffusion_backend for ~3-5x faster texture generation.")
         except subprocess.CalledProcessError:
-            print("[Hunyuan3D-Paint] MLX installation failed (optional — PyTorch backend still works).")
+            print("[Hunyuan3D-Paint] MLX installation failed. PyTorch MPS backend will still work.")
     else:
         print("[Hunyuan3D-Paint] MLX already installed.")

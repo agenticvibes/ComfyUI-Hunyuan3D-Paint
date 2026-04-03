@@ -1,8 +1,15 @@
-# ComfyUI-Hunyuan3d-Paint
+# ComfyUI-Hunyuan3D-Paint
 
-ComfyUI nodes for generating PBR textures on 3D meshes using Tencent's Hunyuan3D-2.1 multiview diffusion model. Supports **MPS** (Mac) and **MLX** (Apple Silicon, ~3-5x faster) backends. Powered by Tencent Hunyuan.
+ComfyUI nodes for generating PBR textures on 3D meshes using Tencent's Hunyuan3D-2.1 multiview diffusion model. Powered by Tencent Hunyuan.
 
-This is the **texture painting** half of the Hunyuan3D pipeline. For mesh generation, see [ComfyUI-Hunyuan3d-Shape](https://github.com/agenticvibes/ComfyUI-Hunyuan3d-Shape).
+Supports three backends:
+- **CUDA** — Windows/Linux with NVIDIA GPU
+- **MPS** — macOS Apple Silicon via PyTorch
+- **MLX** — macOS Apple Silicon via Apple MLX (~3-5x faster than MPS)
+
+On Mac, the node UI lets you choose between `pytorch` (MPS) and `mlx` backends depending on what's installed. MLX is installed automatically by `install.py` on Apple Silicon.
+
+This is the **texture painting** package. For mesh generation, see [ComfyUI-Hunyuan3D-Shape](https://github.com/agenticvibes/ComfyUI-Hunyuan3D-Shape). For generic mesh tools, see [ComfyUI-MeshTools](https://github.com/agenticvibes/ComfyUI-MeshTools).
 
 ## Nodes
 
@@ -25,14 +32,15 @@ This is the **texture painting** half of the Hunyuan3D pipeline. For mesh genera
 TRIMESH → Camera Config → MultiViews Generator → Bake MultiViews → InPaint → GLB
 ```
 
-Input meshes can come from [ComfyUI-Hunyuan3d-Shape](https://github.com/agenticvibes/ComfyUI-Hunyuan3d-Shape), [Trellis](https://github.com/microsoft/TRELLIS), or any source that outputs a `TRIMESH`. Use [ComfyUI-MeshTools](https://github.com/agenticvibes/ComfyUI-MeshTools) for UV unwrapping and mesh post-processing.
+Input meshes can come from [ComfyUI-Hunyuan3D-Shape](https://github.com/agenticvibes/ComfyUI-Hunyuan3D-Shape), [Trellis](https://github.com/microsoft/TRELLIS), or any source that outputs a `TRIMESH`. Use [ComfyUI-MeshTools](https://github.com/agenticvibes/ComfyUI-MeshTools) for UV unwrapping and mesh post-processing.
 
 ## Installation
 
-### 1. Clone or copy into ComfyUI
+### 1. Clone into ComfyUI
 
-```
-ComfyUI/custom_nodes/ComfyUI-Hunyuan3d-Paint/
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/agenticvibes/ComfyUI-Hunyuan3D-Paint.git
 ```
 
 ### 2. Install dependencies
@@ -40,9 +48,9 @@ ComfyUI/custom_nodes/ComfyUI-Hunyuan3d-Paint/
 The `install.py` runs automatically when ComfyUI loads the node pack. It installs:
 - Python dependencies from `requirements.txt`
 - C++ rasterizer extensions (precompiled wheels or source build)
-- MLX on macOS Apple Silicon (optional)
+- MLX on macOS Apple Silicon (for the faster MLX backend)
 
-To install manually:
+To install manually instead:
 
 ```bash
 pip install -r requirements.txt
@@ -51,19 +59,24 @@ pip install -r requirements.txt
 cd hy3dpaint/custom_rasterizer && pip install --no-build-isolation .
 cd hy3dpaint/DifferentiableRenderer && pip install --no-build-isolation .
 
-# Optional: MLX for Apple Silicon acceleration
+# MLX for Apple Silicon (optional when installing manually — enables the mlx backend)
 pip install mlx
 ```
 
 ### 3. Download models
 
-You need the **paint model** plus **DINOv2** for image conditioning. Choose either PyTorch OR MLX weights for the paint model — you don't need both.
+Which models you need depends on your platform:
 
-#### Required: Paint model (choose one)
+| Model | CUDA (Windows/Linux) | MPS (Mac PyTorch) | MLX (Mac fast) |
+|---|---|---|---|
+| `hunyuan3d-paintpbr-v2-1/` | Required | Required | Required (for config files) |
+| `hunyuan3d-mlx-weights/` | Not needed | Not needed | Required |
+| `dinov2-giant/` | Required | Required | Required |
+| `RealESRGAN_x4plus.pth` | Optional | Optional | Optional |
 
-**Option A — PyTorch (MPS/CUDA):**
+#### Paint model
 
-Download `hunyuan3d-paintpbr-v2-1/` from [tencent/Hunyuan3D-2.1](https://huggingface.co/tencent/Hunyuan3D-2.1) and place in:
+**For CUDA or MPS (PyTorch):** Download `hunyuan3d-paintpbr-v2-1/` from [tencent/Hunyuan3D-2.1](https://huggingface.co/tencent/Hunyuan3D-2.1):
 
 ```
 ComfyUI/models/diffusers/
@@ -78,9 +91,7 @@ ComfyUI/models/diffusers/
     └── model_index.json
 ```
 
-**Option B — MLX (Apple Silicon, ~3-5x faster):**
-
-Download from [AgenticVibes/hunyuan3d-2.1-mlx](https://huggingface.co/AgenticVibes/hunyuan3d-2.1-mlx) and place in:
+**For MLX (Apple Silicon):** Download from [AgenticVibes/hunyuan3d-2.1-mlx](https://huggingface.co/AgenticVibes/hunyuan3d-2.1-mlx):
 
 ```
 ComfyUI/models/diffusers/
@@ -89,9 +100,9 @@ ComfyUI/models/diffusers/
     └── vae.npz
 ```
 
-> Note: MLX backend still requires the PyTorch paint model directory for pipeline config files. Place both directories in `models/diffusers/`.
+> **Note:** The MLX backend still requires the PyTorch paint model directory for pipeline config files (scheduler, tokenizer, etc.). If using MLX, place both directories in `models/diffusers/`.
 
-#### Required: DINOv2 image encoder
+#### DINOv2 image encoder
 
 Download [facebook/dinov2-giant](https://huggingface.co/facebook/dinov2-giant) and place in:
 
@@ -129,19 +140,21 @@ ComfyUI/models/
 
 ## Platform Support
 
-| Platform | Backend | Notes |
-|---|---|---|
-| **CUDA** (Windows/Linux) | PyTorch | Full support, C++ rasterizer runs natively |
-| **MPS** (macOS Apple Silicon) | PyTorch | Full support, chunked attention for large sequences, CPU fallback for rasterizer |
-| **MLX** (macOS Apple Silicon) | MLX | ~3-5x faster UNet inference, select `mlx` in the `diffusion_backend` dropdown |
+| Platform | Backend | How to select | Notes |
+|---|---|---|---|
+| **CUDA** (Windows/Linux) | PyTorch | `pytorch` (default) | C++ rasterizer runs natively on GPU |
+| **MPS** (macOS Apple Silicon) | PyTorch | `pytorch` (default) | Chunked attention for large sequences, CPU fallback for rasterizer |
+| **MLX** (macOS Apple Silicon) | MLX | `mlx` in dropdown | ~3-5x faster UNet inference. Requires MLX installed + MLX weights downloaded |
+
+On Mac, the `diffusion_backend` dropdown in the MultiViews Generator node shows available backends. `mlx` only appears when the `mlx` package is installed.
 
 ## License
 
 This project contains code from Tencent's Hunyuan3D-2.1 and original MPS/MLX additions.
 
 - **Tencent code**: [Tencent Hunyuan 3D 2.1 Community License Agreement](LICENSE) — non-commercial, territory restricted (excludes EU/UK/South Korea)
-- **MPS/MLX additions**: [MIT License](LICENSE-MIT)
-- **Apple MLX base code** (`hy3dpaint/mlx/base/`): MIT License — Copyright © 2023 Apple Inc.
+- **MPS/MLX port**: [MIT License](LICENSE-MIT) — Copyright (c) 2025 agenticvibes
+- **Apple MLX base code** (`hy3dpaint/mlx/base/`): MIT License — Copyright (c) 2023 Apple Inc.
 
 **Important restrictions:**
 - **Non-commercial use only** (Tencent license)
