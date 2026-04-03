@@ -307,16 +307,16 @@ class Hy3DMultiViewsGenerator:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "trimesh": ("TRIMESH",),
-                "camera_config": ("HY3D21CAMERA",),
+                "trimesh": ("TRIMESH", {"tooltip": "Input 3D mesh to paint textures on"}),
+                "camera_config": ("HY3D21CAMERA", {"tooltip": "Camera angles and weights from the Camera Config node"}),
                 "paint_model": (_get_diffusers_models(), {"tooltip": "Paint model directory from ComfyUI/models/diffusers/ (e.g. hunyuan3d-paintpbr-v2-1)"}),
-                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256}),
-                "image": ("IMAGE", {"tooltip": "Image to generate mesh from"}),
-                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Number of steps"}),
-                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "Guidance scale"}),
-                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512}),
-                "unwrap_mesh": ("BOOLEAN", {"default":True}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256, "tooltip": "Resolution of each rendered view in pixels. 512 is standard, 1024 for higher quality"}),
+                "image": ("IMAGE", {"tooltip": "Reference image for texture style and color guidance"}),
+                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Diffusion denoising steps. More steps = higher quality textures but slower. 10 is a good starting point"}),
+                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "How closely textures follow the reference image. Higher = more faithful colors. 3.0 recommended"}),
+                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512, "tooltip": "Output texture resolution in pixels. 1024 for standard, 2048-4096 for high detail"}),
+                "unwrap_mesh": ("BOOLEAN", {"default":True, "tooltip": "Automatically UV unwrap the mesh before texturing. Disable if mesh already has UVs"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed for reproducible texture generation"}),
                 "diffusion_backend": (_get_diffusion_backends(), {"default": "pytorch", "tooltip": "Diffusion backend: pytorch (default, proven) or mlx (experimental, ~5x faster on Apple Silicon)"}),
             },
         }
@@ -365,10 +365,10 @@ class Hy3DBakeMultiViews:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "pipeline": ("HY3DPIPELINE", ),
-                "camera_config": ("HY3D21CAMERA", ),
-                "albedo": ("IMAGE", ),
-                "mr": ("IMAGE", )
+                "pipeline": ("HY3DPIPELINE", {"tooltip": "Paint pipeline from the MultiViews Generator node"}),
+                "camera_config": ("HY3D21CAMERA", {"tooltip": "Camera configuration matching the generated multi-views"}),
+                "albedo": ("IMAGE", {"tooltip": "Multi-view albedo (color) images from the MultiViews Generator"}),
+                "mr": ("IMAGE", {"tooltip": "Multi-view metallic-roughness images from the MultiViews Generator"})
             },
         }
 
@@ -401,12 +401,12 @@ class Hy3DInPaint:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "pipeline": ("HY3DPIPELINE", ),
-                "albedo": ("NPARRAY", ),
-                "albedo_mask": ("NPARRAY", ),
-                "mr": ("NPARRAY", ),
-                "mr_mask": ("NPARRAY",),
-                "output_mesh_name": ("STRING",),
+                "pipeline": ("HY3DPIPELINE", {"tooltip": "Paint pipeline with the loaded mesh and renderer"}),
+                "albedo": ("NPARRAY", {"tooltip": "Baked albedo texture map from the Bake node"}),
+                "albedo_mask": ("NPARRAY", {"tooltip": "Mask indicating unpainted regions of the albedo texture"}),
+                "mr": ("NPARRAY", {"tooltip": "Baked metallic-roughness texture map from the Bake node"}),
+                "mr_mask": ("NPARRAY", {"tooltip": "Mask indicating unpainted regions of the MR texture"}),
+                "output_mesh_name": ("STRING", {"tooltip": "Filename for the exported GLB (without extension)"}),
             },
         }
 
@@ -469,10 +469,10 @@ class Hy3D21CameraConfig:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "camera_azimuths": ("STRING", {"default": "0, 90, 180, 270, 0, 180", "multiline": False}),
-                "camera_elevations": ("STRING", {"default": "0, 0, 0, 0, 90, -90", "multiline": False}),
-                "view_weights": ("STRING", {"default": "1, 0.1, 0.5, 0.1, 0.05, 0.05", "multiline": False}),
-                "ortho_scale": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 2.0, "step": 0.01}),
+                "camera_azimuths": ("STRING", {"default": "0, 90, 180, 270, 0, 180", "multiline": False, "tooltip": "Comma-separated horizontal rotation angles in degrees. 0=front, 90=right, 180=back, 270=left"}),
+                "camera_elevations": ("STRING", {"default": "0, 0, 0, 0, 90, -90", "multiline": False, "tooltip": "Comma-separated vertical angles in degrees. 0=eye level, 90=top, -90=bottom"}),
+                "view_weights": ("STRING", {"default": "1, 0.1, 0.5, 0.1, 0.05, 0.05", "multiline": False, "tooltip": "Comma-separated importance weights for each view during texture baking. Higher weight = more influence"}),
+                "ortho_scale": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 2.0, "step": 0.01, "tooltip": "Orthographic camera scale. Adjust to frame the model. 1.0 fits most objects"}),
             },
         }
 
@@ -501,12 +501,12 @@ class Hy3D21UseMultiViews:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "trimesh": ("TRIMESH",),
-                "camera_config": ("HY3D21CAMERA",),
-                "albedo": ("IMAGE",),
-                "mr": ("IMAGE",),
-                "view_size": ("INT",{"default":512}),
-                "texture_size": ("INT",{"default":1024}),
+                "trimesh": ("TRIMESH", {"tooltip": "3D mesh to apply pre-generated textures to"}),
+                "camera_config": ("HY3D21CAMERA", {"tooltip": "Camera configuration that was used to generate the multi-views"}),
+                "albedo": ("IMAGE", {"tooltip": "Pre-generated albedo multi-view images"}),
+                "mr": ("IMAGE", {"tooltip": "Pre-generated metallic-roughness multi-view images"}),
+                "view_size": ("INT",{"default":512, "tooltip": "View resolution matching the generated multi-views"}),
+                "texture_size": ("INT",{"default":1024, "tooltip": "Output texture resolution in pixels"}),
             },
         }
 
@@ -531,10 +531,10 @@ class Hy3D21UseMultiViewsFromMetaData:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "trimesh": ("TRIMESH",),
-                "metadata_file": ("STRING",),
-                "view_size": ("INT",{"default":512}),
-                "texture_size": ("INT",{"default":1024}),
+                "trimesh": ("TRIMESH", {"tooltip": "3D mesh to apply textures to"}),
+                "metadata_file": ("STRING", {"tooltip": "Path to meta_data.json exported by a previous MetaData node"}),
+                "view_size": ("INT",{"default":512, "tooltip": "View resolution matching the saved multi-views"}),
+                "texture_size": ("INT",{"default":1024, "tooltip": "Output texture resolution in pixels"}),
             },
         }
 
@@ -597,17 +597,17 @@ class Hy3D21MultiViewsGeneratorWithMetaData:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "trimesh": ("TRIMESH",),
-                "camera_config": ("HY3D21CAMERA",),
+                "trimesh": ("TRIMESH", {"tooltip": "Input 3D mesh to paint textures on"}),
+                "camera_config": ("HY3D21CAMERA", {"tooltip": "Camera angles and weights from the Camera Config node"}),
                 "paint_model": (_get_diffusers_models(), {"tooltip": "Paint model directory from ComfyUI/models/diffusers/"}),
-                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256}),
-                "image": ("IMAGE", {"tooltip": "Image to generate mesh from"}),
-                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Number of steps"}),
-                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "Guidance scale"}),
-                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512}),
-                "unwrap_mesh": ("BOOLEAN", {"default":True}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "output_name":("STRING",),
+                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256, "tooltip": "Resolution of each rendered view in pixels"}),
+                "image": ("IMAGE", {"tooltip": "Reference image for texture style and color guidance"}),
+                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Diffusion denoising steps. More = higher quality, slower"}),
+                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "How closely textures follow the reference image. 3.0 recommended"}),
+                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512, "tooltip": "Output texture resolution in pixels"}),
+                "unwrap_mesh": ("BOOLEAN", {"default":True, "tooltip": "Automatically UV unwrap before texturing"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed for reproducible generation"}),
+                "output_name":("STRING", {"tooltip": "Base filename for saving metadata and multi-view images"}),
             },
         }
 
@@ -676,10 +676,10 @@ class Hy3DBakeMultiViewsWithMetaData:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "pipeline": ("HY3DPIPELINE", ),
-                "albedo": ("IMAGE", ),
-                "mr": ("IMAGE", ),
-                "metadata": ("HY3D21METADATA",),
+                "pipeline": ("HY3DPIPELINE", {"tooltip": "Paint pipeline from the MultiViews Generator"}),
+                "albedo": ("IMAGE", {"tooltip": "Multi-view albedo images"}),
+                "mr": ("IMAGE", {"tooltip": "Multi-view metallic-roughness images"}),
+                "metadata": ("HY3D21METADATA", {"tooltip": "Metadata from the MultiViews Generator With MetaData node"}),
             },
         }
 
@@ -758,10 +758,10 @@ class Hy3DHighPolyToLowPolyBakeMultiViewsWithMetaData:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "metadata_file": ("STRING",),
-                "view_size": ("INT",{"default":512}),
-                "texture_size": ("INT",{"default":1024}),
-                "target_face_nums": ("STRING",{"default":"20000,10000,5000"}),
+                "metadata_file": ("STRING", {"tooltip": "Path to meta_data.json from a previous generation"}),
+                "view_size": ("INT",{"default":512, "tooltip": "View resolution matching the saved multi-views"}),
+                "texture_size": ("INT",{"default":1024, "tooltip": "Output texture resolution for the low-poly meshes"}),
+                "target_face_nums": ("STRING",{"default":"20000,10000,5000", "tooltip": "Comma-separated face counts for each LOD level (e.g. 20000,10000,5000)"}),
             },
         }
 
@@ -878,26 +878,26 @@ class Hy3D21GenerateMultiViewsBatch:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "output_folder": ("STRING",),
-                "camera_config": ("HY3D21CAMERA",),
+                "output_folder": ("STRING", {"tooltip": "Folder where textured meshes and metadata will be saved"}),
+                "camera_config": ("HY3D21CAMERA", {"tooltip": "Camera angles and weights for multi-view rendering"}),
                 "paint_model": (_get_diffusers_models(), {"tooltip": "Paint model directory from ComfyUI/models/diffusers/"}),
-                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256}),
-                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Number of steps"}),
-                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "Guidance scale"}),
-                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512}),
-                "unwrap_mesh": ("BOOLEAN", {"default":True}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0x7fffffff}),
-                "generate_random_seed": ("BOOLEAN",{"default":True}),
-                "remove_background": ("BOOLEAN",{"default":False}),
-                "skip_generated_mesh": ("BOOLEAN",{"default":True}),
-                "upscale_multiviews": (["None","CustomModel"],{"default":"None"}),
-                "upscale_model_name": (folder_paths.get_filename_list("upscale_models"), ),
-                "export_multiviews": ("BOOLEAN",{"default":True, "tooltip":"Multiviews can be used to apply texture to a low poly mesh"}),
-                "export_metadata": ("BOOLEAN",{"default":True,"tooltip":"Exporta json file with camera config and multiviews"}),
+                "view_size": ("INT", {"default": 512, "min": 512, "max":1024, "step":256, "tooltip": "Resolution of each rendered view"}),
+                "steps": ("INT", {"default": 10, "min": 1, "max": 100, "step": 1, "tooltip": "Diffusion steps per mesh. More = better quality, slower"}),
+                "guidance_scale": ("FLOAT", {"default": 3.0, "min": 1, "max": 10, "step": 0.1, "tooltip": "Reference image adherence. 3.0 recommended"}),
+                "texture_size": ("INT", {"default":1024,"min":512,"max":4096,"step":512, "tooltip": "Output texture resolution"}),
+                "unwrap_mesh": ("BOOLEAN", {"default":True, "tooltip": "UV unwrap each mesh before texturing"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0x7fffffff, "tooltip": "Base random seed"}),
+                "generate_random_seed": ("BOOLEAN",{"default":True, "tooltip": "Use a different random seed for each mesh"}),
+                "remove_background": ("BOOLEAN",{"default":False, "tooltip": "Remove image backgrounds before texturing (requires rembg pip package)"}),
+                "skip_generated_mesh": ("BOOLEAN",{"default":True, "tooltip": "Skip meshes that already have a textured GLB in the output folder"}),
+                "upscale_multiviews": (["None","CustomModel"],{"default":"None", "tooltip": "Upscale multi-view images before baking. None = no upscaling, CustomModel = use selected upscale model"}),
+                "upscale_model_name": (folder_paths.get_filename_list("upscale_models"), {"tooltip": "Upscale model from ComfyUI/models/upscale_models/"}),
+                "export_multiviews": ("BOOLEAN",{"default":True, "tooltip": "Save individual multi-view images alongside the textured mesh"}),
+                "export_metadata": ("BOOLEAN",{"default":True, "tooltip": "Save a meta_data.json file with camera config and file references"}),
             },
             "optional": {
-                "input_images_folder": ("STRING",),
-                "input_meshes_folder": ("STRING",),
+                "input_images_folder": ("STRING", {"tooltip": "Folder containing reference images (matched to meshes by filename)"}),
+                "input_meshes_folder": ("STRING", {"tooltip": "Folder containing input meshes to texture (GLB or OBJ files)"}),
             }
         }
 
@@ -905,7 +905,7 @@ class Hy3D21GenerateMultiViewsBatch:
     RETURN_NAMES = ("processed_meshes",)
     FUNCTION = "process"
     CATEGORY = "Hunyuan3D21Wrapper"
-    DESCRIPTION = "Process all meshes from a folder"
+    DESCRIPTION = "Batch-process all meshes from a folder, generating textured GLBs with optional upscaling and metadata export."
     OUTPUT_NODE = True
 
     def process(self, output_folder, camera_config, paint_model, view_size, steps, guidance_scale, texture_size, unwrap_mesh, seed, generate_random_seed, remove_background, skip_generated_mesh, upscale_multiviews, upscale_model_name, export_multiviews, export_metadata, input_images_folder = None, input_meshes_folder = None):
